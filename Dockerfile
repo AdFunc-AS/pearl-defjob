@@ -9,6 +9,7 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 COPY entrypoint.sh /usr/local/bin/pearl-entrypoint
+COPY profiles/ /usr/local/share/pearl/profiles/
 RUN chmod 0755 /usr/local/bin/pearl-entrypoint \
  && useradd --create-home --uid 10001 miner
 

@@ -19,6 +19,16 @@ pearl-entrypoint --miner-url https://… --miner-sha256 <64 hex> --miner-bin <fi
     --miner-args <argumenter til mineren, {WORKER} byttes ut>
 ```
 
+## Profiler (for vast-maler)
+
+Args-feltet i vast-konsollen tar maks 256 tegn, og lenke + SHA-256 + adresse + pool går over det. Derfor kan miner og pool festes i en profil som er bygd inn i bildet ([`profiles/`](profiles)). Da trenger malen bare:
+
+```
+--profile krig-1.5.12-kryptex --address prl1p… [--worker-prefix gpu]
+```
+
+En profil er en liten `.env`-fil med `MINER_URL`, `MINER_SHA256`, `MINER_BIN` og `MINER_ARGS` (`{ADDRESS}` og `{WORKER}` byttes ut). Lenke og hash er dermed versjonert og kan gjennomgås i repoet. For en ny miner-versjon: legg til en ny profil og bygg bildet. `--profile` kan ikke kombineres med `--miner-url`/`--miner-sha256`/`--miner-bin`/`--miner-args`, og adressen må ha formen `prl1…`.
+
 ## Bruk på vast
 
 I vast-konsollen (Create job → Job to Set) eller med `vastai set defjob <maskin> --price_gpu <pris> --image ghcr.io/adfunc-as/pearl-defjob:1 --args --miner-url … --miner-sha256 … --miner-bin … --miner-args …`. Bare launch type *args* støttes for bakgrunnsjobber. Bildet bygger på `nvidia/cuda:12.8.1-runtime-ubuntu24.04`, så verten trenger driver for CUDA 12.8 eller nyere.

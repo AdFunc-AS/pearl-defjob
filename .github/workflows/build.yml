@@ -42,6 +42,19 @@ jobs:
           docker run --rm -e PEARL_ALLOW_FILE=1 -v "$t:/t:ro" "$IMAGE:1" --selftest \
             --miner-url file:///t/fakeminer --miner-sha256 "$(printf 'b%.0s' $(seq 64))" --miner-bin fakeminer --miner-args x || rc=$?
           [ "$rc" -eq 65 ] || { echo "feil hash skulle gitt kode 65, fikk $rc"; exit 1; }
+          # Profiler: miner og pool festet i bildet, så vast-malen bare trenger profilnavn og adresse (args-feltet tar maks 256 tegn).
+          p="$(mktemp -d)"
+          printf 'MINER_URL=file:///t/fakeminer\nMINER_SHA256=%s\nMINER_BIN=fakeminer\nMINER_ARGS=--user {ADDRESS}/{WORKER}\n' "$sha" > "$p/fake.env"
+          chmod 755 "$p" && chmod 644 "$p/fake.env"
+          addr=prl1pqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq
+          docker run --rm -e PEARL_ALLOW_FILE=1 -e PEARL_PROFILE_DIR=/p -v "$t:/t:ro" -v "$p:/p:ro" "$IMAGE:1" \
+            --profile fake --address "$addr" --selftest
+          rc=0; docker run --rm "$IMAGE:1" --profile krig-1.5.12-kryptex --address prl1bad --selftest || rc=$?
+          [ "$rc" -eq 64 ] || { echo "ugyldig adresse skulle gitt kode 64, fikk $rc"; exit 1; }
+          rc=0; docker run --rm "$IMAGE:1" --profile finnes-ikke --address "$addr" --selftest || rc=$?
+          [ "$rc" -eq 64 ] || { echo "ukjent profil skulle gitt kode 64, fikk $rc"; exit 1; }
+          n="$(docker run --rm --entrypoint grep "$IMAGE:1" -c '^MINER_SHA256=[0-9a-f]\{64\}$' /usr/local/share/pearl/profiles/krig-1.5.12-kryptex.env)"
+          [ "$n" = 1 ] || { echo "profilen krig-1.5.12-kryptex mangler en gyldig SHA-256"; exit 1; }
 
       - name: Publiser
         env:

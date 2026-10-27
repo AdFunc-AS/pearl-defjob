@@ -10,15 +10,21 @@
 #       --miner-args <argumenter til mineren, {WORKER} byttes ut med f.eks. gpu-3fa9c1d2>
 #
 # --miner-args må stå sist (vast sender alt etter --args uendret). --selftest laster ned og kontrollerer, men starter ikke.
+#
+# Kortversjon for vast-maler (args-feltet tar maks 256 tegn): en profil i bildet (profiles/NAVN.env) fester miner-lenke,
+# SHA-256 og pool, så malen bare trenger profilnavn og din offentlige adresse:
+#   pearl-entrypoint --profile krig-1.5.12-kryptex --address prl1p… [--worker-prefix gpu] [--selftest]
 set -u
 
 log() { printf '%s pearl: %s\n' "$(date -u +%H:%M:%S)" "$*" >&2; }
 die() { log "FEIL: $1"; exit "${2:-1}"; }
 
-MINER_URL=""; MINER_SHA256=""; MINER_BIN=""; WORKER_PREFIX="gpu"; SELFTEST=0
+MINER_URL=""; MINER_SHA256=""; MINER_BIN=""; WORKER_PREFIX="gpu"; SELFTEST=0; PROFILE=""; ADDRESS=""
 MINER_ARGS=()
 while [ $# -gt 0 ]; do
   case "$1" in
+    --profile)       PROFILE="${2:-}"; shift 2 ;;
+    --address)       ADDRESS="${2:-}"; shift 2 ;;
     --miner-url)     MINER_URL="${2:-}"; shift 2 ;;
     --miner-sha256)  MINER_SHA256="${2:-}"; shift 2 ;;
     --miner-bin)     MINER_BIN="${2:-}"; shift 2 ;;
@@ -28,6 +34,28 @@ while [ $# -gt 0 ]; do
     *) die "ukjent argument: $1" 64 ;;
   esac
 done
+
+if [ -n "$PROFILE" ]; then
+  { [ -z "$MINER_URL$MINER_SHA256$MINER_BIN" ] && [ "${#MINER_ARGS[@]}" -eq 0 ]; } \
+    || die "--profile kan ikke kombineres med --miner-url/--miner-sha256/--miner-bin/--miner-args" 64
+  printf '%s' "$PROFILE" | grep -Eq '^[a-z0-9][a-z0-9._-]{0,62}$' || die "--profile må være et profilnavn (små bokstaver, tall, . _ -)" 64
+  printf '%s' "$ADDRESS" | grep -Eq '^prl1[qpzry9x8gf2tvdw0s3jn54khce6mua7l]{20,90}$' || die "--address må være en Pearl-adresse (prl1…)" 64
+  PROFILE_FILE="${PEARL_PROFILE_DIR:-/usr/local/share/pearl/profiles}/$PROFILE.env"
+  [ -f "$PROFILE_FILE" ] || die "ukjent profil: $PROFILE" 64
+  profile_args=""
+  while IFS='=' read -r key value || [ -n "$key" ]; do
+    case "$key" in
+      MINER_URL)    MINER_URL="$value" ;;
+      MINER_SHA256) MINER_SHA256="$value" ;;
+      MINER_BIN)    MINER_BIN="$value" ;;
+      MINER_ARGS)   profile_args="$value" ;;
+    esac
+  done < "$PROFILE_FILE"
+  read -r -a MINER_ARGS <<< "$profile_args"
+  for i in "${!MINER_ARGS[@]}"; do MINER_ARGS[i]="${MINER_ARGS[i]//\{ADDRESS\}/$ADDRESS}"; done
+elif [ -n "$ADDRESS" ]; then
+  die "--address brukes bare sammen med --profile" 64
+fi
 
 case "$MINER_URL" in
   https://*) ;;
