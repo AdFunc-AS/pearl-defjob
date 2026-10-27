@@ -1,0 +1,56 @@
+name: bygg og publiser
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE: ghcr.io/adfunc-as/pearl-defjob
+
+jobs:
+  bygg:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: shellcheck
+        run: shellcheck entrypoint.sh
+
+      - name: Bygg
+        run: docker build --pull -t "$IMAGE:1" -t "$IMAGE:sha-${GITHUB_SHA::12}" .
+
+      # Uten GPU og uten ekte miner: sjekker at skriptet nekter å starte uten argumenter, at bildet ikke kjører som root,
+      # at en miner med riktig hash godkjennes og at en med feil hash avvises.
+      - name: Røyktest
+        run: |
+          set -eu
+          rc=0; docker run --rm "$IMAGE:1" || rc=$?
+          [ "$rc" -eq 64 ] || { echo "forventet kode 64 uten argumenter, fikk $rc"; exit 1; }
+          [ "$(docker run --rm --entrypoint id "$IMAGE:1" -u)" = 10001 ] || { echo "bildet kjører som root"; exit 1; }
+          t="$(mktemp -d)"
+          printf '#!/bin/bash\nexit 0\n' > "$t/fakeminer"
+          chmod 755 "$t" && chmod 644 "$t/fakeminer"
+          sha="$(sha256sum "$t/fakeminer" | cut -d' ' -f1)"
+          docker run --rm -e PEARL_ALLOW_FILE=1 -v "$t:/t:ro" "$IMAGE:1" --selftest \
+            --miner-url file:///t/fakeminer --miner-sha256 "$sha" --miner-bin fakeminer --miner-args x
+          rc=0
+          docker run --rm -e PEARL_ALLOW_FILE=1 -v "$t:/t:ro" "$IMAGE:1" --selftest \
+            --miner-url file:///t/fakeminer --miner-sha256 "$(printf 'b%.0s' $(seq 64))" --miner-bin fakeminer --miner-args x || rc=$?
+          [ "$rc" -eq 65 ] || { echo "feil hash skulle gitt kode 65, fikk $rc"; exit 1; }
+
+      - name: Publiser
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+          echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker push "$IMAGE:1"
+          docker push "$IMAGE:sha-${GITHUB_SHA::12}"
+          digest="$(docker image inspect "$IMAGE:1" --format '{{index .RepoDigests 0}}')"
+          echo "Publisert: $digest"
+          echo "Publisert: \`$digest\`" >> "$GITHUB_STEP_SUMMARY"
