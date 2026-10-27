@@ -112,7 +112,8 @@ trap stop TERM INT
 backoff=10
 while true; do
   started=$(date +%s)
-  "$BIN" "${ARGS[@]}" &
+  # Fra minerens egen mappe, som leverandørens mine-pearl.sh (bibliotekene ligger ved siden av binæren).
+  ( cd "$(dirname "$BIN")" && exec "$BIN" "${ARGS[@]}" ) &
   child=$!
   wait "$child"; rc=$?
   child=0
